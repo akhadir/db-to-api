@@ -31,8 +31,10 @@ Databases Supported
 * PostgreSQL
 * SQLite
 
-API Structure
+API Structure for READ
 -------------
+
+* Method: GET
 
 * all rows in a table: `/[database]/[table].[format]`
 * specific row in a table: `/[database]/[table]/[ID].[format]`
@@ -46,6 +48,22 @@ Additional Parameters
 * `limit`: number, maximum number of results to return
 
 e.g., `/[database]/[table]/[column]/[value].[format]?order_by=[column]&direction=[direction]`
+
+API Structure for Update
+-------------
+
+* Method: PUT
+* URL: `/[database]/[table]/[column]/[value].[format]`
+* Header: `Content-Type: 'application/x-www-form-urlencoded`
+* Body: key value pairs of table column and the corresponding value
+ 
+
+API Structure for Delete
+-------------
+
+* Method: DELETE
+* URL: `/[database]/[table]/[column]/[value].[format]`
+* Body: key value pairs of table column and the corresponding value
 
 Requirements
 ------------
