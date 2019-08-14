@@ -17,7 +17,7 @@ class DB_API {
 
 	}
 
-	/** 
+	/**
 	 * Returns static reference to the class instance
 	 */
 	public static function &get_instance() {
@@ -32,7 +32,6 @@ class DB_API {
 	 * @param array $args the dataset properties
 	 */
 	function register_db( $name = null, $args = array() ) {
-
 		$defaults = array(
 			'name' => null,
 			'username' => 'root',
@@ -47,7 +46,6 @@ class DB_API {
 
 		$args = shortcode_atts( $defaults, $args );
 		$name = $this->slugify( $name );
-
 		$this->dbs[$name] = (object) $args;
 
 	}
@@ -66,10 +64,10 @@ class DB_API {
 		if ( is_object( $db ) ) {
 			$db = $db->name;
 		}
-		
-		
+
+
 		if ( !array_key_exists( $db, $this->dbs ) ) {
-			$this->error( 'Invalid Database', 404 );
+			$this->error( 'Invalid Database' . $db, 404 );
 		}
 
 		return $this->dbs[$db];
@@ -88,11 +86,11 @@ class DB_API {
 		if ( !$db ) {
 			return false;
 		}
-		
+
 		$this->db = $db;
 
 		return true;
-		
+
 	}
 
 
@@ -189,12 +187,12 @@ class DB_API {
 	 * @todo support port #s and test on each database
 	 */
 	function &connect( $db ) {
-		
+
 		// check for existing connection
 		if ( isset( $this->connections[$db] ) ) {
 			return $this->connections[$db];
 		}
-			
+
 		$db = $this->get_db( $db );
 
 		try {
@@ -236,7 +234,7 @@ class DB_API {
 
 		// cache
 		$this->connections[$db->type] = &$dbh;
-		
+
 		return $dbh;
 
 	}
@@ -248,27 +246,27 @@ class DB_API {
 	 * @param return bool true if table exists, otherwise false
 	 */
 	function verify_table( $query_table, $db = null ) {
-		
+
 		$tables = $this->cache_get( $this->get_db( $db )->name . '_tables' );
-		
+
 		if ( !$tables  ) {
-		
+
 			$dbh = &$this->connect( $db );
-			try { 
+			try {
 				$stmt = $dbh->query( 'SHOW TABLES' );
 			} catch( PDOException $e ) {
 				$this->error( $e );
 			}
-			
+
 			$tables = array();
 			while ( $table = $stmt->fetch() ) {
 				$tables[] = $table[0];
 			}
-		
+
 		}
-		
+
 		return in_array( $query_table, $tables );
-		
+
 	}
 
 	/**
@@ -282,15 +280,15 @@ class DB_API {
 		if ( !$this->verify_table( $table ) ) {
 			return false;
 		}
-			
+
 		$key = $this->get_db( $db )->name . '.' . $table . '_columns';
-		
+
 		if ( $cache = $this->cache_get( $key ) ) {
 			return $cache;
 		}
-			
+
 		$dbh = &$this->connect( $db );
-		
+
 		try {
 			$q = $dbh->prepare( "DESCRIBE $table" );
 			$q->execute();
@@ -298,7 +296,7 @@ class DB_API {
 		} catch( PDOException $e ) {
 			$this->error( $e );
 		}
-		
+
 		$this->cache_set( $key, $columns, $this->get_db( $db )->ttl );
 		return $columns;
 	}
@@ -319,13 +317,171 @@ class DB_API {
 
 	/**
 	 * Returns the first column in a table
-	 * @param string $table the table 
+	 * @param string $table the table
 	 * @param string $db the datbase slug
 	 * @return string the column name
 	 */
 	function get_first_column( $table, $db = null ) {
 
 		return reset( $this->get_columns( $table, $db ) );
+
+	}
+/**
+	 * Build and execute the main database query
+	 * @param array $query the database query ASSUMES SANITIZED
+	 * @return array an array of results
+	 */
+	function delete( $query, $db = null ) {
+
+		$key = md5( serialize( $query ) . $this->get_db( $db )->name );
+
+		if ( $cache = $this->cache_get( $key ) ) {
+			return $cache;
+		}
+
+		try {
+
+			$dbh = &$this->connect( $db );
+
+			// sanitize table name
+			if ( !$this->verify_table( $query['table'] ) ) {
+				$this->error( 'Invalid Table', 404 );
+			}
+
+			$sql = 'DELETE FROM ' . $query['table'];
+			$bindValues = array();
+			if ( $query['value'] && $query['column'] ) {
+				$sql .= " WHERE `{$query['table']}`.`{$query['column']}` = ?";
+				array_push($bindValues, $query['value']);
+			} else {
+				$this->error( "{error: `Where key is not provided`}", 400 );
+			}
+			$sth = $dbh->prepare( $sql );
+			// foreach ($post as $key => $value) {
+			// 	echo $value;
+			// 	$sth->bindParam( ":$key", $value);
+			// }
+			$sth->execute($bindValues);
+
+			#$results = $sth->fetchAll( PDO::FETCH_OBJ );
+			#$results = $this->sanitize_results( $results );
+			$results = "";
+		} catch( PDOException $e ) {
+			$this->error( $e, 400 );
+		}
+
+		$this->cache_set( $key, $results, $this->get_db( $db )->ttl );
+
+		return $results;
+
+	}
+
+/**
+	 * Build and execute the main database query
+	 * @param array $query the database query ASSUMES SANITIZED
+	 * @return array an array of results
+	 */
+	function put( $query, $put, $db = null ) {
+
+		$key = md5( serialize( $query ) . $this->get_db( $db )->name );
+
+		if ( $cache = $this->cache_get( $key ) ) {
+			return $cache;
+		}
+
+		try {
+
+			$dbh = &$this->connect( $db );
+
+			// sanitize table name
+			if ( !$this->verify_table( $query['table'] ) ) {
+				$this->error( 'Invalid Table', 404 );
+			}
+
+			$sql = 'UPDATE ' . $query['table'] .' SET ';
+			$fields = array();
+			$values = array();
+			$bindValues = array();
+			foreach ($put as $key => $value) {
+				array_push($fields, "$key=?" );
+				array_push($bindValues, $value);
+			}
+			$sql .= implode(',', $fields);
+			if ( $query['value'] && $query['column'] ) {
+				$sql .= " WHERE `{$query['table']}`.`{$query['column']}` = ?";
+				array_push($bindValues, $query['value']);
+			} else {
+				$this->error( "{error: `Where key is not provided`}", 400 );
+			}
+			$sth = $dbh->prepare( $sql );
+			// foreach ($post as $key => $value) {
+			// 	echo $value;
+			// 	$sth->bindParam( ":$key", $value);
+			// }
+			$sth->execute($bindValues);
+
+			#$results = $sth->fetchAll( PDO::FETCH_OBJ );
+			#$results = $this->sanitize_results( $results );
+			$results = "";
+		} catch( PDOException $e ) {
+			$this->error( $e, 400 );
+		}
+
+		$this->cache_set( $key, $results, $this->get_db( $db )->ttl );
+
+		return $results;
+
+	}
+
+	/**
+	 * Build and execute the main database query
+	 * @param array $query the database query ASSUMES SANITIZED
+	 * @return array an array of results
+	 */
+	function post( $query, $post, $db = null ) {
+		$key = md5( serialize( $query ) . $this->get_db( $db )->name );
+
+		if ( $cache = $this->cache_get( $key ) ) {
+			return $cache;
+		}
+
+		try {
+
+			$dbh = &$this->connect( $db );
+
+			// sanitize table name
+			if ( !$this->verify_table( $query['table'] ) ) {
+				$this->error( 'Invalid Table', 404 );
+			}
+
+			$sql = 'INSERT INTO ' . $query['table'];
+			$fields = array();
+			$values = array();
+			$bindValues = array();
+			foreach ($post as $key => $value) {
+				array_push($fields, $key);
+				array_push($values, '?');
+				array_push($bindValues, $value);
+			}
+			$sql .= '(' . implode(',', $fields) . ') ';
+			$sql .= 'VALUES (' . implode(',', $values) . ')';
+			$sth = $dbh->prepare( $sql );
+			// foreach ($post as $key => $value) {
+			// 	echo $value;
+			// 	$sth->bindParam( ":$key", $value);
+			// }
+			$sth->execute($bindValues);
+
+			#$results = $sth->fetchAll( PDO::FETCH_OBJ );
+			#$results = $this->sanitize_results( $results );
+			$results = "";
+		} catch( PDOException $e ) {
+			$this->error( $e, 400 );
+		}
+
+		$this->cache_set( $key, $results, $this->get_db( $db )->ttl );
+
+		return $results;
 
 	}
 
@@ -337,7 +493,7 @@ class DB_API {
 	function query( $query, $db = null ) {
 
 		$key = md5( serialize( $query ) . $this->get_db( $db )->name );
-		
+
 		if ( $cache = $this->cache_get( $key ) ) {
 			return $cache;
 		}
@@ -392,9 +548,9 @@ class DB_API {
 		} catch( PDOException $e ) {
 			$this->error( $e );
 		}
-		
+
 		$this->cache_set( $key, $results, $this->get_db( $db )->ttl );
-		
+
 		return $results;
 
 	}
@@ -427,11 +583,11 @@ class DB_API {
 	 * @param int $code (optional) the error code with which to respond
 	 */
 	function error( $error, $code = '500' ) {
-	  
+
 	  if ( is_object( $error ) && method_exists( $error, 'get_message' ) ) {
 	    $error = $error->get_message();
 	  }
-	
+
 		http_response_code( $code );
 		die( $error );
 		return false;
@@ -446,7 +602,7 @@ class DB_API {
 
 		header('Content-type: application/json');
 		$output = json_encode( $data );
-		
+
 		// Prepare a JSONP callback.
 		$callback = $this->jsonp_callback_filter( $query['callback'] );
 
@@ -460,7 +616,7 @@ class DB_API {
 		echo $output;
 
 	}
-	
+
 	/**
 	 * Prevent malicious callbacks from being used in JSONP requests.
 	 */
@@ -487,38 +643,38 @@ class DB_API {
 		  $this->error( 'No results found', 404 );
 		  return;
 		}
-		
+
 		//page title
 		echo "<h1>Results</h1>";
-		
+
 		//render table headings
 		echo "<table class='table table-striped'>\n<thead>\n<tr>\n";
 
 		foreach ( array_keys( get_object_vars( reset( $data ) ) ) as $heading ) {
   		echo "\t<th>$heading</th>\n";
 		}
-		
+
 		echo "</tr>\n</thead>\n";
-		
+
 		//loop data and render
 		foreach ( $data as $row ) {
-  		
+
   		echo "<tr>\n";
-  		
+
   		foreach ( $row as $cell ) {
-    		
+
     		echo "\t<td>$cell</td>\n";
-    		
+
   		}
-  		
+
   		echo "</tr>";
-  		
+
 		}
-		
+
 		echo "</table>";
-		
-  	require_once( dirname( __FILE__ ) . '/bootstrap/footer.html' );		
-		
+
+  	require_once( dirname( __FILE__ ) . '/bootstrap/footer.html' );
+
 	}
 
 	/**
@@ -526,11 +682,11 @@ class DB_API {
 	 */
 	function render_xml( $data ) {
 
-		header ("Content-Type:text/xml");  
+		header ("Content-Type:text/xml");
 		$xml = new SimpleXMLElement( '<results></results>' );
 		$xml = $this->object_to_xml( $data, $xml );
 		echo $this->tidy_xml( $xml );
-		
+
 	}
 
 	/**
@@ -540,56 +696,56 @@ class DB_API {
 	 * @return object the Simple XML object (with array objects added)
 	 */
 	function object_to_xml( $array, $xml ) {
-	
+
 		//array of keys that will be treated as attributes, not children
 		$attributes = array( 'id' );
-	
+
 		//recursively loop through each item
 		foreach ( $array as $key => $value ) {
-	
+
 			//if this is a numbered array,
 			//grab the parent node to determine the node name
 			if ( is_numeric( $key ) )
 				$key = 'result';
-	
+
 			//if this is an attribute, treat as an attribute
 			if ( in_array( $key, $attributes ) ) {
 				$xml->addAttribute( $key, $value );
-	
+
 				//if this value is an object or array, add a child node and treat recursively
 			} else if ( is_object( $value ) || is_array( $value ) ) {
 					$child = $xml->addChild(  $key );
 					$child = $this->object_to_xml( $value, $child );
-	
+
 					//simple key/value child pair
 				} else {
 				$xml->addChild( $key, $value );
 			}
-	
+
 		}
-	
+
 		return $xml;
-	
+
 	}
-	
+
 	/**
 	 * Clean up XML domdocument formatting and return as string
 	 */
 	function tidy_xml( $xml ) {
-  	
+
 	   $dom = new DOMDocument();
 	   $dom->preserveWhiteSpace = false;
 	   $dom->formatOutput = true;
 	   $dom->loadXML( $xml->asXML() );
 	   return $dom->saveXML();
-  	
+
 	}
 
 	/**
 	 * Retrieve data from Alternative PHP Cache (APC).
 	 */
 	function cache_get( $key ) {
-		
+
 		if ( !extension_loaded('apc') || (ini_get('apc.enabled') != 1) ) {
 			if ( isset( $this->cache[ $key ] ) ) {
 				return $this->cache[ $key ];
