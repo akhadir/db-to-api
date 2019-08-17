@@ -484,7 +484,38 @@ class DB_API {
 		return $results;
 
 	}
+	/**
+	 * Build and execute the main database query
+	 * @param array $query the database query ASSUMES SANITIZED
+	 * @return array an array of results
+	 */
+	function runSql( $sql, $db = null ) {
 
+		$key = md5( serialize( $query ) . $this->get_db( $db )->name );
+
+		if ( $cache = $this->cache_get( $key ) ) {
+			return $cache;
+		}
+
+		try {
+
+			$dbh = &$this->connect( $db );
+			$sth = $dbh->prepare( $sql );
+			$sth->execute();
+
+			$results = "";
+			#$results = $sth->fetchAll( PDO::FETCH_OBJ );
+			#$results = $this->sanitize_results( $results );
+
+		} catch( PDOException $e ) {
+			$this->error( $e );
+		}
+
+		$this->cache_set( $key, $results, $this->get_db( $db )->ttl );
+
+		return $results;
+
+	}
 	/**
 	 * Build and execute the main database query
 	 * @param array $query the database query ASSUMES SANITIZED
