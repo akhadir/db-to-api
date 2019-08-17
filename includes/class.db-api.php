@@ -147,6 +147,10 @@ class DB_API {
 			'direction' => 'ASC',
 			'column' => null,
 			'value' => null,
+			'column1' => null,
+			'value1' => null,
+			'column2' => null,
+			'value2' => null,
 			'limit' => null,
 			'format' => 'json',
 			'callback' =>  null,
@@ -489,7 +493,7 @@ class DB_API {
 	 * @param array $query the database query ASSUMES SANITIZED
 	 * @return array an array of results
 	 */
-	function runSql( $sql, $db = null ) {
+	function runSql($query, $sql, $db = null ) {
 
 		$key = md5( serialize( $query ) . $this->get_db( $db )->name );
 
@@ -554,7 +558,9 @@ class DB_API {
 			if ( $query['value'] && $query['column'] ) {
 				$sql .= " WHERE `{$query['table']}`.`{$query['column']}` = :value";
 			}
-
+			if ( $query['value1'] && $query['column1'] ) {
+				$sql .= " AND `{$query['table']}`.`{$query['column1']}` = :value1";
+			}
 			if ( $query['order_by'] && $query['direction'] ) {
 
 				if ( !$this->verify_column( $query['order_by'], $query['table'] ) ) {
@@ -571,6 +577,9 @@ class DB_API {
 
 			$sth = $dbh->prepare( $sql );
 			$sth->bindParam( ':value', $query['value'] );
+			if ( $query['value1'] && $query['column1'] ) {
+				$sth->bindParam( ':value1', $query['value1'] );
+			}
 			$sth->execute();
 
 			$results = $sth->fetchAll( PDO::FETCH_OBJ );
@@ -812,6 +821,5 @@ class DB_API {
 
 
 }
-
 
 $db_api = new DB_API();
