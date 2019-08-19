@@ -819,7 +819,6 @@ class DB_API {
 
 	}
 
-
 }
 
 $db_api = new DB_API();
